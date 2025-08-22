@@ -6,13 +6,15 @@ import dotenv from 'dotenv';
 // ESM-specific helpers
 import path from 'path';
 import { fileURLToPath } from 'url';
-
+ 
 // Load .env
 dotenv.config();
 
 // Import routes
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
+import quizRoutes from './routes/quiz.js';
+import contentRoutes from './routes/content.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,9 +118,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Serve static files from the "uploads" directory
+app.use('/api/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static('uploads'));
+
 // Routes
 app.use('/api', authRoutes);
 app.use('/api', adminRoutes);
+app.use('/api', quizRoutes);
+app.use('/api', contentRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
