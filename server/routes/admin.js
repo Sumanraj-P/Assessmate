@@ -313,4 +313,66 @@ router.delete('/student/:id', (req, res) => {
   });
 });
 
+// Search students
+router.get('/search-students', (req, res) => {
+  console.log('GET /search-students hit');
+  const searchTerm = req.query.term || '';
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const offset = (page - 1) * limit;
+
+  if (!searchTerm.trim()) {
+    return res.status(400).json({ message: 'Search term is required' });
+  }
+
+  // Use LIKE for partial matching with the search term
+  const searchQuery = `
+    SELECT id, name, roll_no, year_of_study, department, college_name, 
+           mobile_no, email, created_at 
+    FROM users 
+    WHERE user_role = 1 
+    AND name LIKE ? 
+    ORDER BY created_at DESC 
+    LIMIT ? OFFSET ?
+  `;
+  
+  const countQuery = `
+    SELECT COUNT(*) as total 
+    FROM users 
+    WHERE user_role = 1 
+    AND name LIKE ?
+  `;
+
+  const likeParam = `%${searchTerm}%`;
+  
+  req.db.query(searchQuery, [likeParam, limit, offset], (err, results) => {
+    if (err) {
+      console.error('Search query error:', err);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+
+    req.db.query(countQuery, [likeParam], (countErr, countResults) => {
+      if (countErr) {
+        console.error('Count query error:', countErr);
+        return res.status(500).json({ message: 'Internal server error' });
+      }
+
+      const total = countResults[0].total;
+      const totalPages = Math.ceil(total / limit);
+
+      res.json({
+        success: true,
+        students: results,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalStudents: total,
+          hasNext: page < totalPages,
+          hasPrev: page > 1
+        }
+      });
+    });
+  });
+});
+
 export default router;

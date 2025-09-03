@@ -1,38 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
+import { PencilIcon, TrashIcon, MagnifyingGlassIcon, PlusIcon } from '@heroicons/react/24/outline';
+import toastService from '../utils/toastService';
+import AddStudentForm from '../components/AddStudentForm';
 
 
 const AddStudents = () => {
-  const [activeTab, setActiveTab] = useState('manual');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
   const [studentsCount, setStudentsCount] = useState(0);
   const navigate = useNavigate();
 
-  // Manual form state
-  const [manualForm, setManualForm] = useState({
-    name: '',
-    roll_no: '',
-    year_of_study: '',
-    department: '',
-    college_name: '',
-    mobile_no: '',
-    email: '',
-    password: ''
-  });
+  // View state - 'list' or 'form'
+  const [currentView, setCurrentView] = useState('list');
 
-  // Excel upload state
-  const [excelData, setExcelData] = useState([]);
-  const [selectedFile, setSelectedFile] = useState(null);
-
-  // Add new state for students list and pagination
+  // Students list and pagination state
   const [students, setStudents] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [editingStudent, setEditingStudent] = useState(null);
   const [editForm, setEditForm] = useState(null);
+  
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
     // Check if user is admin
@@ -48,8 +39,23 @@ const AddStudents = () => {
     }
 
     fetchStudentsCount();
+    
+    // If not searching, fetch all students with pagination
+    // If searching, fetch search results
+    if (isSearching && searchTerm.trim()) {
+      handleSearch();
+    } else {
+      fetchStudents();
+    }
+  }, [navigate, currentPage, isSearching, searchTerm]);
+
+  // Handle when a student is added through the form
+  const handleStudentAdded = () => {
+    fetchStudentsCount();
     fetchStudents();
-  }, [navigate, currentPage]);
+    // Return to list view after adding a student
+    setCurrentView('list');
+  };
 
   // Update fetchStudentsCount function
   const fetchStudentsCount = async () => {
@@ -90,7 +96,6 @@ const AddStudents = () => {
   const handleManualSubmit = async (e) => {
   e.preventDefault();
   setLoading(true);
-  setMessage('');
 
   try {
     // Prepare the data
@@ -127,10 +132,7 @@ const AddStudents = () => {
       throw new Error(data.message || 'Failed to add student');
     }
 
-    setMessage({ 
-      type: 'success', 
-      text: 'Student added successfully!' 
-    });
+    toastService.success('Student added successfully!');
 
     // Reset form
     setManualForm({
@@ -150,10 +152,7 @@ const AddStudents = () => {
 
   } catch (error) {
     console.error('Submit error:', error);
-    setMessage({ 
-      type: 'error', 
-      text: error.message || 'Failed to add student' 
-    });
+    toastService.error(error.message || 'Failed to add student');
   } finally {
     setLoading(false);
   }
@@ -180,18 +179,15 @@ const AddStudents = () => {
           const missingColumns = requiredColumns.filter(col => !fileColumns.includes(col));
           
           if (missingColumns.length > 0) {
-            setMessage({ 
-              type: 'error', 
-              text: `Missing required columns: ${missingColumns.join(', ')}`
-            });
+            toastService.error(`Missing required columns: ${missingColumns.join(', ')}`);
             return;
           }
         }
 
         setExcelData(jsonData);
-        setMessage({ type: 'success', text: `${jsonData.length} students loaded from Excel file` });
+        toastService.success(`${jsonData.length} students loaded from Excel file`);
       } catch (error) {
-        setMessage({ type: 'error', text: 'Error reading Excel file. Please check the format.' });
+        toastService.error('Error reading Excel file. Please check the format.');
       }
     };
 
@@ -200,12 +196,11 @@ const AddStudents = () => {
 
   const handleBulkUpload = async () => {
     if (excelData.length === 0) {
-      setMessage({ type: 'error', text: 'Please upload an Excel file first' });
+      toastService.error('Please upload an Excel file first');
       return;
     }
 
     setLoading(true);
-    setMessage('');
 
     try {
       // Add user_role: 1 to all students
@@ -222,19 +217,16 @@ const AddStudents = () => {
       const data = await response.json();
 
       if (response.ok) {
-        setMessage({ 
-          type: 'success', 
-          text: `Successfully added ${data.count} students!` 
-        });
+        toastService.success(`Successfully added ${data.count} students!`);
         setExcelData([]);
         setSelectedFile(null);
         fetchStudentsCount(); // Update count
         fetchStudents(); // Update students list
       } else {
-        setMessage({ type: 'error', text: data.message || 'Failed to add students' });
+        toastService.error(data.message || 'Failed to add students');
       }
     } catch (error) {
-      setMessage({ type: 'error', text: 'Network error. Please try again.' });
+      toastService.error('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -264,7 +256,6 @@ const AddStudents = () => {
   const handleUpdate = async (e) => {
   e.preventDefault();
   setLoading(true);
-  setMessage('');
 
   try {
     console.log('Updating student:', editingStudent.id);
@@ -315,7 +306,7 @@ const AddStudents = () => {
       throw new Error(data.message || `HTTP error! status: ${response.status}`);
     }
 
-    setMessage({ type: 'success', text: 'Student updated successfully!' });
+    toastService.success('Student updated successfully!');
     setEditingStudent(null);
     setEditForm(null);
     
@@ -324,10 +315,7 @@ const AddStudents = () => {
     
   } catch (error) {
     console.error('Update error:', error);
-    setMessage({ 
-      type: 'error', 
-      text: error.message || 'Failed to update student' 
-    });
+    toastService.error(error.message || 'Failed to update student');
   } finally {
     setLoading(false);
   }
@@ -350,447 +338,317 @@ const AddStudents = () => {
         throw new Error(data.message || 'Failed to delete student');
       }
 
-      setMessage({ type: 'success', text: 'Student deleted successfully!' });
+      toastService.success('Student deleted successfully!');
       await fetchStudents();
       await fetchStudentsCount();
     } catch (error) {
       console.error('Delete error:', error);
-      setMessage({ type: 'error', text: error.message || 'Failed to delete student' });
+      toastService.error(error.message || 'Failed to delete student');
     }
+  };
+  
+  // Handle search input change
+  const handleSearchChange = (e) => {
+    setSearchTerm(e.target.value);
+    if (e.target.value === '') {
+      setIsSearching(false);
+    }
+  };
+  
+  // Handle search submission
+  const handleSearch = async (e) => {
+    if (e) e.preventDefault();
+    
+    if (!searchTerm.trim()) {
+      setIsSearching(false);
+      return;
+    }
+    
+    setIsSearching(true);
+    setLoading(true);
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/search-students?term=${searchTerm}&page=${currentPage}&limit=10`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setStudents(data.students);
+        setTotalPages(data.pagination.totalPages);
+      } else {
+        toastService.error(data.message || 'Search failed');
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      toastService.error('Error searching students');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Handle clearing search
+  const handleClearSearch = () => {
+    setSearchTerm('');
+    setIsSearching(false);
   };
 
   const renderStudentsList = () => (
-    <div className="mt-8">
-      <h2 className="text-xl font-bold mb-4">Students List</h2>
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Roll No</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {students.map((student) => (
-              <tr key={student.id}>
-                {editingStudent?.id === student.id ? (
-                  <td colSpan="6" className="px-6 py-4">
-                    <form onSubmit={handleUpdate} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <input
-                          name="name"
-                          value={editForm.name}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          placeholder="Name"
-                          required
-                        />
-                        <input
-                          name="roll_no"
-                          value={editForm.roll_no}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          placeholder="Roll No"
-                          required
-                        />
-                        <input
-                          name="department"
-                          value={editForm.department}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          placeholder="Department"
-                          required
-                        />
-                        <select
-                          name="year_of_study"
-                          value={editForm.year_of_study}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          required
-                        >
-                          <option value="1">1st Year</option>
-                          <option value="2">2nd Year</option>
-                          <option value="3">3rd Year</option>
-                          <option value="4">4th Year</option>
-                        </select>
-                        <input
-                          name="college_name"
-                          value={editForm.college_name}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          placeholder="College Name"
-                          required
-                        />
-                        <input
-                          name="mobile_no"
-                          value={editForm.mobile_no}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          placeholder="Mobile Number"
-                          required
-                        />
-                        <input
-                          name="email"
-                          type="email"
-                          value={editForm.email}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          placeholder="Email"
-                          required
-                        />
-                        <input
-                          name="password"
-                          type="password"
-                          value={editForm.password}
-                          onChange={handleEditChange}
-                          className="border p-2 rounded"
-                          placeholder="Leave blank to keep unchanged"
-                        />
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          type="submit"
-                          className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
-                          disabled={loading}
-                        >
-                          {loading ? 'Updating...' : 'Update'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCancelEdit}
-                          className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  </td>
-                ) : (
-                  <>
-                    <td className="px-6 py-4">{student.name}</td>
-                    <td className="px-6 py-4">{student.roll_no}</td>
-                    <td className="px-6 py-4">{student.department}</td>
-                    <td className="px-6 py-4">{student.year_of_study}</td>
-                    <td className="px-6 py-4">{student.email}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3">
-                        <button
-                          onClick={() => handleEdit(student)}
-                          className="text-blue-600 hover:text-blue-800 p-1 rounded-full hover:bg-blue-100"
-                          title="Edit student"
-                        >
-                          <PencilIcon className="h-5 w-5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(student.id)}
-                          className="text-red-600 hover:text-red-800 p-1 rounded-full hover:bg-red-100"
-                          title="Delete student"
-                        >
-                          <TrashIcon className="h-5 w-5" />
-                        </button>
-                      </div>
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="mt-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900">Users List</h2>
+        
+        <div className="flex space-x-2">
+          {/* Search Form */}
+          <form onSubmit={handleSearch} className="w-full sm:w-auto flex items-center">
+            <div className="relative flex-grow">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={handleSearchChange}
+                placeholder="Search student by name..."
+                className="w-full sm:w-64 pl-3 pr-10 py-2 border border-gray-200 rounded-l-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white text-sm"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="absolute right-0 top-0 h-full px-2 text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <button
+              type="submit"
+              className="bg-blue-500 text-white p-2 rounded-r-md hover:bg-blue-600 transition-colors"
+            >
+              <MagnifyingGlassIcon className="h-5 w-5" />
+            </button>
+          </form>
+          
+          {/* Add Student Button */}
+          <button
+            onClick={() => setCurrentView('form')}
+            className="flex items-center gap-1 bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors"
+          >
+            <PlusIcon className="h-5 w-5" />
+            <span>Add User</span>
+          </button>
+        </div>
       </div>
       
-      {/* Pagination */}
-      <div className="mt-4 flex justify-center space-x-2">
-        {Array.from({ length: totalPages }, (_, i) => (
+      {isSearching && (
+        <div className="mb-4 flex items-center justify-between bg-blue-50 p-3 rounded-md border border-blue-100">
+          <div className="flex items-center">
+            <span className="text-sm text-blue-700 font-medium">
+              Search results for: <span className="font-bold">"{searchTerm}"</span>
+              {students.length > 0 
+                ? ` (${students.length} of ${totalPages * 10} results)`
+                : ' (No results found)'}
+            </span>
+          </div>
           <button
-            key={i + 1}
-            onClick={() => setCurrentPage(i + 1)}
-            className={`px-3 py-1 rounded ${
-              currentPage === i + 1
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 hover:bg-gray-300'
-            }`}
+            onClick={handleClearSearch}
+            className="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded transition-colors"
           >
-            {i + 1}
+            Clear Search
           </button>
-        ))}
+        </div>
+      )}
+      
+      <div className="bg-white shadow-sm border border-gray-100 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll No</th>
+                <th className="hidden sm:table-cell px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                <th className="hidden md:table-cell px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Year</th>
+                <th className="hidden lg:table-cell px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">College</th>
+                <th className="hidden lg:table-cell px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {students.length > 0 ? (
+                students.map((student) => (
+                  <tr key={student.id} className="hover:bg-gray-50">
+                    {editingStudent?.id === student.id ? (
+                      <td colSpan="6" className="px-4 sm:px-6 py-4">
+                        <form onSubmit={handleUpdate} className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <input
+                              name="name"
+                              value={editForm.name}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              placeholder="Name"
+                              required
+                            />
+                            <input
+                              name="roll_no"
+                              value={editForm.roll_no}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              placeholder="Roll No"
+                              required
+                            />
+                            <input
+                              name="department"
+                              value={editForm.department}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              placeholder="Department"
+                              required
+                            />
+                            <select
+                              name="year_of_study"
+                              value={editForm.year_of_study}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              required
+                            >
+                              <option value="1">1st Year</option>
+                              <option value="2">2nd Year</option>
+                              <option value="3">3rd Year</option>
+                              <option value="4">4th Year</option>
+                            </select>
+                            <input
+                              name="college_name"
+                              value={editForm.college_name}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              placeholder="College Name"
+                              required
+                            />
+                            <input
+                              name="mobile_no"
+                              value={editForm.mobile_no}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              placeholder="Mobile Number"
+                              required
+                            />
+                            <input
+                              name="email"
+                              type="email"
+                              value={editForm.email}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              placeholder="Email"
+                              required
+                            />
+                            <input
+                              name="password"
+                              type="password"
+                              value={editForm.password}
+                              onChange={handleEditChange}
+                              className="border border-gray-200 p-2 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                              placeholder="Leave blank to keep unchanged"
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-2 mt-4">
+                            <button
+                              type="submit"
+                              className="bg-green-500 text-white px-3 sm:px-4 py-2 rounded-md hover:bg-green-600 transition-colors text-sm"
+                              disabled={loading}
+                            >
+                              {loading ? 'Updating...' : 'Update'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCancelEdit}
+                              className="bg-gray-200 text-gray-700 px-3 sm:px-4 py-2 rounded-md hover:bg-gray-300 transition-colors text-sm"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      </td>
+                    ) : (
+                      <>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">{student.name}</td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">{student.roll_no}</td>
+                        <td className="hidden sm:table-cell px-4 sm:px-6 py-4 whitespace-nowrap text-sm">{student.department}</td>
+                        <td className="hidden md:table-cell px-4 sm:px-6 py-4 whitespace-nowrap text-sm">{student.year_of_study}</td>
+                        <td className="hidden md:table-cell px-4 sm:px-6 py-4 whitespace-nowrap text-sm">{student.college_name}</td>
+                        <td className="hidden lg:table-cell px-4 sm:px-6 py-4 whitespace-nowrap text-sm">{student.email}</td>
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">
+                          <div className="flex items-center space-x-2 sm:space-x-3">
+                            <button
+                              onClick={() => handleEdit(student)}
+                              className="text-blue-500 hover:text-blue-700 p-1 rounded-full hover:bg-blue-50 transition-colors"
+                              title="Edit student"
+                            >
+                              <PencilIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(student.id)}
+                              className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-50 transition-colors"
+                              title="Delete student"
+                            >
+                              <TrashIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="6" className="px-4 sm:px-6 py-8 text-center text-sm text-gray-500">
+                    {isSearching ? 'No students found matching your search.' : 'No students found.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        {/* Pagination */}
+        <div className="flex justify-center mt-4 py-3 bg-gray-50 border-t border-gray-100">
+          <div className="flex flex-wrap justify-center gap-1 sm:gap-2">
+            {Array.from({ length: totalPages }, (_, i) => (
+              <button
+                key={i + 1}
+                onClick={() => setCurrentPage(i + 1)}
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium ${
+                  currentPage === i + 1
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                } transition-colors`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
-              <button
-                onClick={() => navigate('/admin')}
-                className="mr-4 text-gray-600 hover:text-gray-800"
-              >
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Add Students</h1>
-                <p className="text-gray-600">Add students manually or via Excel upload</p>
-              </div>
-            </div>
+    <div className="w-full">
+      {currentView === 'list' ? (
+        <>
+          {/* Students Count */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6 mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Current Statistics</h3>
+            <p className="text-2xl font-bold text-blue-500">Total Users: {studentsCount}</p>
           </div>
+
+          {/* Students List */}
+          {renderStudentsList()}
+        </>
+      ) : (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100">
+          <AddStudentForm 
+            onClose={() => setCurrentView('list')} 
+            onStudentAdded={handleStudentAdded}
+          />
         </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Message Display */}
-        {message && (
-          <div className={`mb-6 p-4 rounded-md ${
-            message.type === 'success' 
-              ? 'bg-green-100 border border-green-400 text-green-700'
-              : 'bg-red-100 border border-red-400 text-red-700'
-          }`}>
-            {message.text}
-          </div>
-        )}
-
-        {/* Students Count */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-2">Current Statistics</h3>
-          <p className="text-2xl font-bold text-blue-600">Total Students: {studentsCount}</p>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="border-b border-gray-200">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('manual')}
-                className={`py-4 px-6 font-medium text-sm ${
-                  activeTab === 'manual'
-                    ? 'border-b-2 border-blue-500 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Manual Entry
-              </button>
-              <button
-                onClick={() => setActiveTab('excel')}
-                className={`py-4 px-6 font-medium text-sm ${
-                  activeTab === 'excel'
-                    ? 'border-b-2 border-blue-500 text-blue-600'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Excel Upload
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6">
-            {/* Manual Entry Tab */}
-            {activeTab === 'manual' && (
-              <form onSubmit={handleManualSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Full Name *
-                    </label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={manualForm.name}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Roll Number *
-                    </label>
-                    <input
-                      type="text"
-                      name="roll_no"
-                      value={manualForm.roll_no}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Year of Study *
-                    </label>
-                    <select
-                      name="year_of_study"
-                      value={manualForm.year_of_study}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="">Select Year</option>
-                      <option value="1">1st Year</option>
-                      <option value="2">2nd Year</option>
-                      <option value="3">3rd Year</option>
-                      <option value="4">4th Year</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Department *
-                    </label>
-                    <input
-                      type="text"
-                      name="department"
-                      value={manualForm.department}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      College Name *
-                    </label>
-                    <input
-                      type="text"
-                      name="college_name"
-                      value={manualForm.college_name}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Mobile Number *
-                    </label>
-                    <input
-                      type="tel"
-                      name="mobile_no"
-                      value={manualForm.mobile_no}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Email Address *
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={manualForm.email}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Password *
-                    </label>
-                    <input
-                      type="password"
-                      name="password"
-                      value={manualForm.password}
-                      onChange={handleManualChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md font-medium transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Adding Student...' : 'Add Student'}
-                </button>
-              </form>
-            )}
-
-            {/* Excel Upload Tab */}
-            {activeTab === 'excel' && (
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Upload Excel File (.xlsx)
-                  </label>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleFileUpload}
-                    className="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md hover:border-gray-400 focus:outline-none"
-                  />
-                  <p className="mt-2 text-sm text-gray-500">
-                    Required columns: name, roll_no, year_of_study, department, college_name, mobile_no, email, password
-                  </p>
-                </div>
-
-                {excelData.length > 0 && (
-                  <div>
-                    <h4 className="text-lg font-medium text-gray-800 mb-3">
-                      Preview ({excelData.length} students)
-                    </h4>
-                    <div className="max-h-64 overflow-y-auto border rounded-md">
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Roll No</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Department</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {excelData.slice(0, 5).map((student, index) => (
-                            <tr key={index} className="hover:bg-gray-50">
-                              <td className="px-4 py-2 text-sm text-gray-900">{student.name}</td>
-                              <td className="px-4 py-2 text-sm text-gray-900">{student.roll_no}</td>
-                              <td className="px-4 py-2 text-sm text-gray-900">{student.email}</td>
-                              <td className="px-4 py-2 text-sm text-gray-900">{student.department}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {excelData.length > 5 && (
-                        <div className="text-center py-2 text-sm text-gray-500">
-                          ... and {excelData.length - 5} more students
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={handleBulkUpload}
-                      disabled={loading}
-                      className="w-full mt-4 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-md font-medium transition-colors disabled:opacity-50"
-                    >
-                      {loading ? 'Uploading Students...' : `Upload ${excelData.length} Students`}
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Students List */}
-        {renderStudentsList()}
-      </div>
+      )}
     </div>
   );
 };
